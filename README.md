@@ -1,6 +1,6 @@
 # bare-xdiff
 
-High-performance native bindings for libxdiff in Bare. Provides both asynchronous and synchronous APIs for diffing and merging text data.
+Native bindings for libxdiff in Bare. Provides both asynchronous and synchronous APIs for diffing and merging text data.
 
 ```bash
 npm install bare-xdiff
