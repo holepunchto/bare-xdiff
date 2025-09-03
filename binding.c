@@ -37,11 +37,11 @@ typedef struct {
   
   // Input buffers
   void *buf1;
-  long len1;
+  size_t len1;
   void *buf2;
-  long len2;
+  size_t len2;
   void *buf3;  // For merge operations
-  long len3;
+  size_t len3;
   
   // Options
   uint32_t diff_flags;
@@ -52,7 +52,7 @@ typedef struct {
   
   // Output
   char *result;
-  long result_len;
+  size_t result_len;
   int32_t error_code;
   
   js_deferred_teardown_t *teardown;
@@ -66,7 +66,8 @@ typedef struct {
 } bare_xdiff_output_t;
 
 // Parse diff options from JavaScript object
-static uint32_t parse_diff_options(js_env_t *env, js_value_t *options) {
+static uint32_t
+parse_diff_options(js_env_t *env, js_value_t *options) {
   uint32_t flags = 0;
   js_value_t *prop;
   bool value;
@@ -141,7 +142,8 @@ static uint32_t parse_diff_options(js_env_t *env, js_value_t *options) {
 }
 
 // Parse merge options from JavaScript object
-static void parse_merge_options(js_env_t *env, js_value_t *options, int32_t *level, int32_t *favor, int32_t *style, int32_t *marker_size) {
+static void
+parse_merge_options(js_env_t *env, js_value_t *options, int32_t *level, int32_t *favor, int32_t *style, int32_t *marker_size) {
   js_value_t *prop;
   
   // Set defaults
@@ -233,7 +235,8 @@ static void parse_merge_options(js_env_t *env, js_value_t *options, int32_t *lev
 }
 
 // Callback for xdiff diff output
-static int xdiff_out_line(void *priv, mmbuffer_t *mb, int nbuf) {
+static int
+xdiff_out_line(void *priv, mmbuffer_t *mb, int nbuf) {
   bare_xdiff_output_t *output = (bare_xdiff_output_t *)priv;
   
   for (int i = 0; i < nbuf; i++) {
@@ -261,15 +264,16 @@ static int xdiff_out_line(void *priv, mmbuffer_t *mb, int nbuf) {
 }
 
 // Work function for diff operation
-static void bare_xdiff_diff_work(uv_work_t *req) {
+static void
+bare_xdiff_diff_work(uv_work_t *req) {
   bare_xdiff_request_t *request = (bare_xdiff_request_t *)req->data;
   
   // Set up mmfile structures for xdiff
   mmfile_t mf1, mf2;
   mf1.ptr = (char *)request->buf1;
-  mf1.size = request->len1;
+  mf1.size = (long)request->len1;
   mf2.ptr = (char *)request->buf2;
-  mf2.size = request->len2;
+  mf2.size = (long)request->len2;
   
   // Configure xdiff parameters
   xpparam_t xpp;
@@ -311,17 +315,18 @@ static void bare_xdiff_diff_work(uv_work_t *req) {
 }
 
 // Work function for merge operation
-static void bare_xdiff_merge_work(uv_work_t *req) {
+static void
+bare_xdiff_merge_work(uv_work_t *req) {
   bare_xdiff_request_t *request = (bare_xdiff_request_t *)req->data;
   
   // Set up mmfile structures for three-way merge
   mmfile_t ancestor, ours, theirs;
   ancestor.ptr = (char *)request->buf1;
-  ancestor.size = request->len1;
+  ancestor.size = (long)request->len1;
   ours.ptr = (char *)request->buf2;
-  ours.size = request->len2;
+  ours.size = (long)request->len2;
   theirs.ptr = (char *)request->buf3;
-  theirs.size = request->len3;
+  theirs.size = (long)request->len3;
   
   // Configure merge parameters
   xmparam_t xmp;
@@ -355,13 +360,15 @@ static void bare_xdiff_merge_work(uv_work_t *req) {
 }
 
 // Patch functionality is not supported by xdiff - stub implementation
-static void bare_xdiff_patch_work(uv_work_t *req) {
+static void
+bare_xdiff_patch_work(uv_work_t *req) {
   bare_xdiff_request_t *request = (bare_xdiff_request_t *)req->data;
   request->error_code = -1; // Not implemented
 }
 
 // After work callback for all operations
-static void bare_xdiff_after(uv_work_t *req, int status) {
+static void
+bare_xdiff_after(uv_work_t *req, int status) {
   int err;
   bare_xdiff_request_t *request = (bare_xdiff_request_t *)req->data;
   js_env_t *env = request->env;
@@ -665,7 +672,7 @@ bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
   }
   
   // Parse options
-  unsigned long diff_flags = 0;
+  uint32_t diff_flags = 0;
   if (options) {
     diff_flags = parse_diff_options(env, options);
   }
@@ -673,9 +680,9 @@ bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
   // Set up mmfile structures for xdiff
   mmfile_t mf1, mf2;
   mf1.ptr = str1;
-  mf1.size = len1;
+  mf1.size = (long)len1;
   mf2.ptr = str2;
-  mf2.size = len2;
+  mf2.size = (long)len2;
   
   // Configure xdiff parameters
   xpparam_t xpp;
@@ -772,10 +779,10 @@ bare_xdiff_merge_sync(js_env_t *env, js_callback_info_t *info) {
   }
   
   // Parse merge options
-  int merge_level = XDL_MERGE_MINIMAL;
-  int merge_favor = 0;
-  int merge_style = 0;
-  int merge_marker_size = 7;
+  int32_t merge_level = XDL_MERGE_MINIMAL;
+  int32_t merge_favor = 0;
+  int32_t merge_style = 0;
+  int32_t merge_marker_size = 7;
   
   if (options) {
     parse_merge_options(env, options, &merge_level, &merge_favor, &merge_style, &merge_marker_size);
@@ -784,11 +791,11 @@ bare_xdiff_merge_sync(js_env_t *env, js_callback_info_t *info) {
   // Set up mmfile structures for three-way merge
   mmfile_t ancestor, ours, theirs;
   ancestor.ptr = str1;
-  ancestor.size = len1;
+  ancestor.size = (long)len1;
   ours.ptr = str2;
-  ours.size = len2;
+  ours.size = (long)len2;
   theirs.ptr = str3;
-  theirs.size = len3;
+  theirs.size = (long)len3;
   
   // Configure merge parameters
   xmparam_t xmp;
