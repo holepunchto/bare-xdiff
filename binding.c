@@ -595,6 +595,183 @@ bare_xdiff_merge(js_env_t *env, js_callback_info_t *info) {
   return NULL;
 }
 
+// Synchronous diff function
+static js_value_t *
+bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
+  int err;
+  size_t argc = 3;
+  js_value_t *argv[3];
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+  
+  // Get typedarray info for both inputs
+  void *data1, *data2;
+  size_t len1, len2;
+  
+  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
+  assert(err == 0);
+  
+  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
+  assert(err == 0);
+  
+  // Third argument is options (optional)
+  js_value_t *options = NULL;
+  if (argc == 3) {
+    options = argv[2];
+  }
+  
+  // Parse options
+  unsigned long diff_flags = 0;
+  if (options) {
+    diff_flags = parse_diff_options(env, options);
+  }
+  
+  // Set up mmfile structures for xdiff
+  mmfile_t mf1, mf2;
+  mf1.ptr = (char *)data1;
+  mf1.size = len1;
+  mf2.ptr = (char *)data2;
+  mf2.size = len2;
+  
+  // Configure xdiff parameters
+  xpparam_t xpp;
+  memset(&xpp, 0, sizeof(xpp));
+  xpp.flags = diff_flags;
+  
+  xdemitconf_t xecfg;
+  memset(&xecfg, 0, sizeof(xecfg));
+  xecfg.ctxlen = 3; // Context lines for unified diff
+  
+  // Set up output handler
+  xdiff_output_t output;
+  memset(&output, 0, sizeof(output));
+  output.data = xdl_malloc(1024);
+  output.capacity = 1024;
+  output.len = 0;
+  
+  if (!output.data) {
+    js_throw_error(env, NULL, "Memory allocation failed");
+    return NULL;
+  }
+  
+  // Set up callback
+  xdemitcb_t ecb;
+  memset(&ecb, 0, sizeof(ecb));
+  ecb.out_line = xdiff_out_line;
+  ecb.priv = &output;
+  
+  // Perform the diff
+  int result = xdl_diff(&mf1, &mf2, &xpp, &xecfg, &ecb);
+  
+  if (result < 0) {
+    xdl_free(output.data);
+    js_throw_error(env, NULL, "xdl_diff failed");
+    return NULL;
+  }
+  
+  // Create result ArrayBuffer
+  void *result_data;
+  js_value_t *result_buffer;
+  err = js_create_arraybuffer(env, output.len, &result_data, &result_buffer);
+  if (err != 0) {
+    xdl_free(output.data);
+    js_throw_error(env, NULL, "Failed to create result buffer");
+    return NULL;
+  }
+  
+  if (output.len > 0) {
+    memcpy(result_data, output.data, output.len);
+  }
+  xdl_free(output.data);
+  
+  return result_buffer;
+}
+
+// Synchronous merge function
+static js_value_t *
+bare_xdiff_merge_sync(js_env_t *env, js_callback_info_t *info) {
+  int err;
+  size_t argc = 4;
+  js_value_t *argv[4];
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+  
+  // Get typedarray info for all three inputs
+  void *data1, *data2, *data3;
+  size_t len1, len2, len3;
+  
+  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
+  assert(err == 0);
+  
+  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
+  assert(err == 0);
+  
+  err = js_get_typedarray_info(env, argv[2], NULL, &data3, &len3, NULL, NULL);
+  assert(err == 0);
+  
+  // Fourth argument is options (optional)
+  js_value_t *options = NULL;
+  if (argc == 4) {
+    options = argv[3];
+  }
+  
+  // Parse merge options
+  int merge_level = XDL_MERGE_MINIMAL;
+  int merge_favor = 0;
+  int merge_style = 0;
+  int merge_marker_size = 7;
+  
+  if (options) {
+    parse_merge_options(env, options, &merge_level, &merge_favor, &merge_style, &merge_marker_size);
+  }
+  
+  // Set up mmfile structures for three-way merge
+  mmfile_t ancestor, ours, theirs;
+  ancestor.ptr = (char *)data1;
+  ancestor.size = len1;
+  ours.ptr = (char *)data2;
+  ours.size = len2;
+  theirs.ptr = (char *)data3;
+  theirs.size = len3;
+  
+  // Configure merge parameters
+  xmparam_t xmp;
+  memset(&xmp, 0, sizeof(xmp));
+  xmp.marker_size = merge_marker_size;
+  xmp.level = merge_level;
+  xmp.favor = merge_favor;
+  xmp.style = merge_style;
+  
+  // Output buffer
+  mmbuffer_t result;
+  memset(&result, 0, sizeof(result));
+  
+  // Perform the merge
+  int ret = xdl_merge(&ancestor, &ours, &theirs, &xmp, &result);
+  
+  if (ret < 0) {
+    js_throw_error(env, NULL, "xdl_merge failed");
+    return NULL;
+  }
+  
+  // Create result ArrayBuffer
+  void *result_data;
+  js_value_t *result_buffer;
+  err = js_create_arraybuffer(env, result.size, &result_data, &result_buffer);
+  if (err != 0) {
+    if (result.ptr) xdl_free(result.ptr);
+    js_throw_error(env, NULL, "Failed to create result buffer");
+    return NULL;
+  }
+  
+  if (result.size > 0) {
+    memcpy(result_data, result.ptr, result.size);
+  }
+  if (result.ptr) xdl_free(result.ptr);
+  
+  return result_buffer;
+}
+
 
 // Module initialization
 static js_value_t *
@@ -614,6 +791,20 @@ init(js_env_t *env, js_value_t *exports) {
   err = js_create_function(env, "merge", -1, bare_xdiff_merge, NULL, &merge_fn);
   assert(err == 0);
   err = js_set_named_property(env, exports, "merge", merge_fn);
+  assert(err == 0);
+  
+  // Export diffSync function
+  js_value_t *diff_sync_fn;
+  err = js_create_function(env, "diffSync", -1, bare_xdiff_diff_sync, NULL, &diff_sync_fn);
+  assert(err == 0);
+  err = js_set_named_property(env, exports, "diffSync", diff_sync_fn);
+  assert(err == 0);
+  
+  // Export mergeSync function
+  js_value_t *merge_sync_fn;
+  err = js_create_function(env, "mergeSync", -1, bare_xdiff_merge_sync, NULL, &merge_sync_fn);
+  assert(err == 0);
+  err = js_set_named_property(env, exports, "mergeSync", merge_sync_fn);
   assert(err == 0);
   
   return exports;
