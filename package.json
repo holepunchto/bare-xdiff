@@ -11,7 +11,8 @@
     "index.js",
     "binding.c",
     "binding.js",
-    "CMakeLists.txt"
+    "CMakeLists.txt",
+    "prebuilds"
   ],
   "addon": true,
   "scripts": {
