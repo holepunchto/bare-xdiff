@@ -64,8 +64,6 @@ async function benchmarkDiff(name, size, iterations = 5) {
   // Generate test data
   const original = generateRandomData(size)
   const modified = generateModifiedData(original)
-  const bufferA = Buffer.from(original)
-  const bufferB = Buffer.from(modified)
   
   console.log(`Data size: ${(size / 1024).toFixed(1)}KB`)
   console.log(`Running ${iterations} iterations...`)
@@ -75,7 +73,7 @@ async function benchmarkDiff(name, size, iterations = 5) {
   const asyncTimes = []
   
   for (let i = 0; i < iterations; i++) {
-    asyncPromises.push(diff(bufferA, bufferB))
+    asyncPromises.push(diff(original, modified))
   }
   
   const batchStart = process.hrtime.bigint()
@@ -96,7 +94,7 @@ async function benchmarkDiff(name, size, iterations = 5) {
   const syncTimes = []
   for (let i = 0; i < iterations; i++) {
     const start = process.hrtime.bigint()
-    const result = diffSync(bufferA, bufferB)
+    const result = diffSync(original, modified)
     const end = process.hrtime.bigint()
     const timeMs = Number(end - start) / 1000000
     syncTimes.push(timeMs)
@@ -130,10 +128,6 @@ async function benchmarkMerge(name, size, iterations = 5) {
   const ours = generateModifiedData(ancestor)
   const theirs = generateModifiedData(ancestor) + '_theirs'
   
-  const bufferAncestor = Buffer.from(ancestor)
-  const bufferOurs = Buffer.from(ours)
-  const bufferTheirs = Buffer.from(theirs)
-  
   console.log(`Data size: ${(size / 1024).toFixed(1)}KB`)
   console.log(`Running ${iterations} iterations...`)
   
@@ -142,7 +136,7 @@ async function benchmarkMerge(name, size, iterations = 5) {
   const asyncTimes = []
   
   for (let i = 0; i < iterations; i++) {
-    asyncPromises.push(merge(bufferAncestor, bufferOurs, bufferTheirs))
+    asyncPromises.push(merge(ancestor, ours, theirs))
   }
   
   const batchStart = process.hrtime.bigint()
@@ -163,7 +157,7 @@ async function benchmarkMerge(name, size, iterations = 5) {
   const syncTimes = []
   for (let i = 0; i < iterations; i++) {
     const start = process.hrtime.bigint()
-    const result = mergeSync(bufferAncestor, bufferOurs, bufferTheirs)
+    const result = mergeSync(ancestor, ours, theirs)
     const end = process.hrtime.bigint()
     const timeMs = Number(end - start) / 1000000
     syncTimes.push(timeMs)
@@ -211,8 +205,8 @@ async function benchmarkAlgorithms(name, size) {
     modifiedLines.splice(25, 0, ...block1)
   }
   
-  const bufferA = Buffer.from(originalLines.join('\n'))
-  const bufferB = Buffer.from(modifiedLines.join('\n'))
+  const textA = originalLines.join('\n')
+  const textB = modifiedLines.join('\n')
   
   console.log(`Data size: ${(size / 1024).toFixed(1)}KB`)
   
@@ -224,7 +218,7 @@ async function benchmarkAlgorithms(name, size) {
     
     for (let i = 0; i < 3; i++) {
       const start = process.hrtime.bigint()
-      const result = await diff(bufferA, bufferB, { algorithm })
+      const result = await diff(textA, textB, { algorithm })
       const end = process.hrtime.bigint()
       const timeMs = Number(end - start) / 1000000
       times.push(timeMs)
@@ -261,8 +255,6 @@ async function benchmarkMemoryUsage() {
       // Generate test data
       const original = generateRandomData(bytes)
       const modified = generateModifiedData(original)
-      const bufferA = Buffer.from(original)
-      const bufferB = Buffer.from(modified)
       
       // Memory after data generation
       const afterData = top().memory()
@@ -272,16 +264,15 @@ async function benchmarkMemoryUsage() {
       
       // Test diff operation
       const beforeDiff = top().memory()
-      const diffResult = await diff(bufferA, bufferB)
+      const diffResult = await diff(original, modified)
       const afterDiff = top().memory()
       const diffMemory = afterDiff.rss - beforeDiff.rss
       
       console.log(`  Diff operation: +${(diffMemory / 1024 / 1024).toFixed(1)}MB, output: ${(diffResult.length / 1024 / 1024).toFixed(1)}MB`)
       
       // Test merge operation  
-      const ancestor = Buffer.from(original)
       const beforeMerge = top().memory()
-      const mergeResult = await merge(ancestor, bufferA, bufferB)
+      const mergeResult = await merge(original, original, modified)
       const afterMerge = top().memory()
       const mergeMemory = afterMerge.rss - beforeMerge.rss
       

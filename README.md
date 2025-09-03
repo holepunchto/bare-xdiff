@@ -1,6 +1,6 @@
 # bare-xdiff
 
-High-performance native bindings for libxdiff in Bare. Provides both asynchronous and synchronous APIs for diffing and merging in-memory data.
+High-performance native bindings for libxdiff in Bare. Provides both asynchronous and synchronous APIs for diffing and merging text data.
 
 ```bash
 npm install bare-xdiff
@@ -12,25 +12,25 @@ npm install bare-xdiff
 const { diff, merge, diffSync, mergeSync } = require('bare-xdiff')
 
 // Async API
-const patchBuffer = await diff(originalBuffer, modifiedBuffer)
-const mergedBuffer = await merge(ancestorBuffer, oursBuffer, theirsBuffer)
+const patch = await diff(originalText, modifiedText)
+const merged = await merge(ancestorText, oursText, theirsText)
 
 // Sync API  
-const patchBuffer = diffSync(originalBuffer, modifiedBuffer)
-const mergedBuffer = mergeSync(ancestorBuffer, oursBuffer, theirsBuffer)
+const patch = diffSync(originalText, modifiedText)
+const merged = mergeSync(ancestorText, oursText, theirsText)
 ```
 
 ## API
 
 ### `diff(a, b[, options])`
 
-Generates a unified diff patch from two buffers.
+Generates a unified diff patch from two text inputs.
 
-- `a` - Original buffer
-- `b` - Modified buffer  
+- `a` - Original text (String)
+- `b` - Modified text (String)
 - `options` - Optional diff options
 
-Returns a `Promise<Buffer>` containing the diff patch.
+Returns a `Promise<String>` containing the diff patch.
 
 #### Options
 
@@ -42,14 +42,14 @@ Returns a `Promise<Buffer>` containing the diff patch.
 
 ### `merge(ancestor, ours, theirs[, options])`
 
-Performs a three-way merge of buffers.
+Performs a three-way merge of text.
 
-- `ancestor` - Original/ancestor buffer
-- `ours` - Our changes buffer
-- `theirs` - Their changes buffer
+- `ancestor` - Original/ancestor text (String)
+- `ours` - Our changes text (String)
+- `theirs` - Their changes text (String)
 - `options` - Optional merge options
 
-Returns a `Promise<Buffer>` containing the merged result.
+Returns a `Promise<String>` containing the merged result.
 
 #### Options
 
@@ -60,11 +60,11 @@ Returns a `Promise<Buffer>` containing the merged result.
 
 ### `diffSync(a, b[, options])`
 
-Synchronous version of `diff()`. Returns a `Buffer` directly.
+Synchronous version of `diff()`. Returns a `String` directly.
 
 ### `mergeSync(ancestor, ours, theirs[, options])`
 
-Synchronous version of `merge()`. Returns a `Buffer` directly.
+Synchronous version of `merge()`. Returns a `String` directly.
 
 ## Examples
 
@@ -73,11 +73,11 @@ Synchronous version of `merge()`. Returns a `Buffer` directly.
 ```js
 const { diff } = require('bare-xdiff')
 
-const a = Buffer.from('hello world\n')  
-const b = Buffer.from('hello bare\n')
+const a = 'hello world\n'
+const b = 'hello bare\n'
 
 const patch = await diff(a, b)
-console.log(patch.toString())
+console.log(patch)
 // Output:
 // @@ -1 +1 @@
 // -hello world
@@ -89,8 +89,8 @@ console.log(patch.toString())
 ```js
 const { diff } = require('bare-xdiff')
 
-const a = Buffer.from('hello world\n')
-const b = Buffer.from('hello  world\n') // extra space
+const a = 'hello world\n'
+const b = 'hello  world\n' // extra space
 
 const patch = await diff(a, b, { ignoreWhitespaceChange: true })
 console.log(patch.length) // 0 - no differences found
@@ -101,8 +101,8 @@ console.log(patch.length) // 0 - no differences found
 ```js
 const { diff } = require('bare-xdiff')
 
-const a = Buffer.from('line1\nline2\nline3\n')
-const b = Buffer.from('line1\nmodified\nline3\n')
+const a = 'line1\nline2\nline3\n'
+const b = 'line1\nmodified\nline3\n'
 
 const minimal = await diff(a, b, { algorithm: 'minimal' })
 const patience = await diff(a, b, { algorithm: 'patience' }) 
@@ -114,12 +114,12 @@ const histogram = await diff(a, b, { algorithm: 'histogram' })
 ```js
 const { merge } = require('bare-xdiff')
 
-const ancestor = Buffer.from('original\nline\n')
-const ours = Buffer.from('our\nline\n')
-const theirs = Buffer.from('original\ntheir line\n')
+const ancestor = 'original\nline\n'
+const ours = 'our\nline\n'
+const theirs = 'original\ntheir line\n'
 
 const result = await merge(ancestor, ours, theirs)
-console.log(result.toString())
+console.log(result)
 // Output includes merged content or conflict markers
 ```
 
@@ -141,7 +141,7 @@ const result = await merge(ancestor, ours, theirs, { style: 'diff3' })
 const { diffSync, mergeSync } = require('bare-xdiff')
 
 // Blocking operations - no async/await needed
-const patch = diffSync(bufferA, bufferB)
+const patch = diffSync(textA, textB)
 const merged = mergeSync(ancestor, ours, theirs)
 ```
 

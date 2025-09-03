@@ -121,9 +121,10 @@ static unsigned long parse_diff_options(js_env_t *env, js_value_t *options) {
     js_value_type_t prop_type;
     if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
       size_t length;
-      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
-        char *algorithm = malloc(length + 1);
-        if (js_get_value_string_utf8(env, prop, (utf8_t*)algorithm, length + 1, NULL) == 0) {
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0) {
+        length += 1; /* NULL */
+        char *algorithm = malloc(length);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)algorithm, length, NULL) == 0) {
           if (strcmp(algorithm, "patience") == 0) {
             flags |= XDF_PATIENCE_DIFF;
           } else if (strcmp(algorithm, "histogram") == 0) {
@@ -159,9 +160,10 @@ static void parse_merge_options(js_env_t *env, js_value_t *options, int *level, 
     js_value_type_t prop_type;
     if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
       size_t length;
-      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
-        char *level_str = malloc(length + 1);
-        if (js_get_value_string_utf8(env, prop, (utf8_t*)level_str, length + 1, NULL) == 0) {
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0) {
+        length += 1; /* NULL */
+        char *level_str = malloc(length);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)level_str, length, NULL) == 0) {
           if (strcmp(level_str, "eager") == 0) {
             *level = XDL_MERGE_EAGER;
           } else if (strcmp(level_str, "zealous") == 0) {
@@ -180,9 +182,10 @@ static void parse_merge_options(js_env_t *env, js_value_t *options, int *level, 
     js_value_type_t prop_type;
     if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
       size_t length;
-      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
-        char *favor_str = malloc(length + 1);
-        if (js_get_value_string_utf8(env, prop, (utf8_t*)favor_str, length + 1, NULL) == 0) {
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0) {
+        length += 1; /* NULL */
+        char *favor_str = malloc(length);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)favor_str, length, NULL) == 0) {
           if (strcmp(favor_str, "ours") == 0) {
             *favor = XDL_MERGE_FAVOR_OURS;
           } else if (strcmp(favor_str, "theirs") == 0) {
@@ -201,9 +204,10 @@ static void parse_merge_options(js_env_t *env, js_value_t *options, int *level, 
     js_value_type_t prop_type;
     if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
       size_t length;
-      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
-        char *style_str = malloc(length + 1);
-        if (js_get_value_string_utf8(env, prop, (utf8_t*)style_str, length + 1, NULL) == 0) {
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0) {
+        length += 1; /* NULL */
+        char *style_str = malloc(length);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)style_str, length, NULL) == 0) {
           if (strcmp(style_str, "diff3") == 0) {
             *style = XDL_MERGE_DIFF3;
           } else if (strcmp(style_str, "zealous_diff3") == 0) {
@@ -390,13 +394,8 @@ static void bare_xdiff_after(uv_work_t *req, int status) {
     err = js_get_null(env, &argv[0]);
     assert(err == 0);
     
-    void *data;
-    err = js_create_arraybuffer(env, request->result_len, &data, &argv[1]);
+    err = js_create_string_utf8(env, (const utf8_t *)request->result, request->result_len, &argv[1]);
     assert(err == 0);
-    
-    if (request->result_len > 0) {
-      memcpy(data, request->result, request->result_len);
-    }
   }
   
   // Call the callback
@@ -433,14 +432,24 @@ bare_xdiff_diff(js_env_t *env, js_callback_info_t *info) {
   assert(err == 0);
   
   // Get string data for both inputs
-  void *data1, *data2;
+  char *str1, *str2;
   size_t len1, len2;
   
-  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[0], NULL, 0, &len1);
   assert(err == 0);
+  len1 += 1; /* NULL */
+  str1 = malloc(len1);
+  err = js_get_value_string_utf8(env, argv[0], (utf8_t*)str1, len1, NULL);
+  assert(err == 0);
+  len1 -= 1; /* Don't include NULL in length for xdiff */
   
-  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[1], NULL, 0, &len2);
   assert(err == 0);
+  len2 += 1; /* NULL */
+  str2 = malloc(len2);
+  err = js_get_value_string_utf8(env, argv[1], (utf8_t*)str2, len2, NULL);
+  assert(err == 0);
+  len2 -= 1; /* Don't include NULL in length for xdiff */
   
   // Handle optional arguments: diff(a, b, callback) or diff(a, b, options, callback)
   js_value_t *options = NULL;
@@ -471,11 +480,15 @@ bare_xdiff_diff(js_env_t *env, js_callback_info_t *info) {
   // Copy input data
   request->buf1 = xdl_malloc(len1);
   request->len1 = len1;
-  memcpy(request->buf1, data1, len1);
+  memcpy(request->buf1, str1, len1);
   
   request->buf2 = xdl_malloc(len2);
   request->len2 = len2;
-  memcpy(request->buf2, data2, len2);
+  memcpy(request->buf2, str2, len2);
+  
+  // Free temporary strings
+  free(str1);
+  free(str2);
   
   // Store callback reference
   err = js_create_reference(env, callback, 1, &request->callback);
@@ -513,18 +526,33 @@ bare_xdiff_merge(js_env_t *env, js_callback_info_t *info) {
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
   
-  // Get typedarray info for all three inputs
-  void *data1, *data2, *data3;
+  // Get string data for all three inputs
+  char *str1, *str2, *str3;
   size_t len1, len2, len3;
   
-  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[0], NULL, 0, &len1);
   assert(err == 0);
+  len1 += 1; /* NULL */
+  str1 = malloc(len1);
+  err = js_get_value_string_utf8(env, argv[0], (utf8_t*)str1, len1, NULL);
+  assert(err == 0);
+  len1 -= 1; /* Don't include NULL in length for xdiff */
   
-  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[1], NULL, 0, &len2);
   assert(err == 0);
+  len2 += 1; /* NULL */
+  str2 = malloc(len2);
+  err = js_get_value_string_utf8(env, argv[1], (utf8_t*)str2, len2, NULL);
+  assert(err == 0);
+  len2 -= 1; /* Don't include NULL in length for xdiff */
   
-  err = js_get_typedarray_info(env, argv[2], NULL, &data3, &len3, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[2], NULL, 0, &len3);
   assert(err == 0);
+  len3 += 1; /* NULL */
+  str3 = malloc(len3);
+  err = js_get_value_string_utf8(env, argv[2], (utf8_t*)str3, len3, NULL);
+  assert(err == 0);
+  len3 -= 1; /* Don't include NULL in length for xdiff */
   
   // Handle optional arguments: merge(o, a, b, callback) or merge(o, a, b, options, callback)
   js_value_t *options = NULL;
@@ -559,15 +587,20 @@ bare_xdiff_merge(js_env_t *env, js_callback_info_t *info) {
   // Copy input data
   request->buf1 = xdl_malloc(len1);
   request->len1 = len1;
-  memcpy(request->buf1, data1, len1);
+  memcpy(request->buf1, str1, len1);
   
   request->buf2 = xdl_malloc(len2);
   request->len2 = len2;
-  memcpy(request->buf2, data2, len2);
+  memcpy(request->buf2, str2, len2);
   
   request->buf3 = xdl_malloc(len3);
   request->len3 = len3;
-  memcpy(request->buf3, data3, len3);
+  memcpy(request->buf3, str3, len3);
+  
+  // Free temporary strings
+  free(str1);
+  free(str2);
+  free(str3);
   
   // Store callback reference
   err = js_create_reference(env, callback, 1, &request->callback);
@@ -604,15 +637,25 @@ bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
   
-  // Get typedarray info for both inputs
-  void *data1, *data2;
+  // Get string data for both inputs
+  char *str1, *str2;
   size_t len1, len2;
   
-  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[0], NULL, 0, &len1);
   assert(err == 0);
+  len1 += 1; /* NULL */
+  str1 = malloc(len1);
+  err = js_get_value_string_utf8(env, argv[0], (utf8_t*)str1, len1, NULL);
+  assert(err == 0);
+  len1 -= 1; /* Don't include NULL in length for xdiff */
   
-  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[1], NULL, 0, &len2);
   assert(err == 0);
+  len2 += 1; /* NULL */
+  str2 = malloc(len2);
+  err = js_get_value_string_utf8(env, argv[1], (utf8_t*)str2, len2, NULL);
+  assert(err == 0);
+  len2 -= 1; /* Don't include NULL in length for xdiff */
   
   // Third argument is options (optional)
   js_value_t *options = NULL;
@@ -628,9 +671,9 @@ bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
   
   // Set up mmfile structures for xdiff
   mmfile_t mf1, mf2;
-  mf1.ptr = (char *)data1;
+  mf1.ptr = str1;
   mf1.size = len1;
-  mf2.ptr = (char *)data2;
+  mf2.ptr = str2;
   mf2.size = len2;
   
   // Configure xdiff parameters
@@ -669,22 +712,19 @@ bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
     return NULL;
   }
   
-  // Create result ArrayBuffer
-  void *result_data;
-  js_value_t *result_buffer;
-  err = js_create_arraybuffer(env, output.len, &result_data, &result_buffer);
+  // Create result string
+  js_value_t *result_string;
+  err = js_create_string_utf8(env, (const utf8_t *)output.data, output.len, &result_string);
   if (err != 0) {
     xdl_free(output.data);
-    js_throw_error(env, NULL, "Failed to create result buffer");
+    js_throw_error(env, NULL, "Failed to create result string");
     return NULL;
   }
   
-  if (output.len > 0) {
-    memcpy(result_data, output.data, output.len);
-  }
   xdl_free(output.data);
-  
-  return result_buffer;
+  free(str1);
+  free(str2);
+  return result_string;
 }
 
 // Synchronous merge function
@@ -696,18 +736,33 @@ bare_xdiff_merge_sync(js_env_t *env, js_callback_info_t *info) {
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
   
-  // Get typedarray info for all three inputs
-  void *data1, *data2, *data3;
+  // Get string data for all three inputs
+  char *str1, *str2, *str3;
   size_t len1, len2, len3;
   
-  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[0], NULL, 0, &len1);
   assert(err == 0);
+  len1 += 1; /* NULL */
+  str1 = malloc(len1);
+  err = js_get_value_string_utf8(env, argv[0], (utf8_t*)str1, len1, NULL);
+  assert(err == 0);
+  len1 -= 1; /* Don't include NULL in length for xdiff */
   
-  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[1], NULL, 0, &len2);
   assert(err == 0);
+  len2 += 1; /* NULL */
+  str2 = malloc(len2);
+  err = js_get_value_string_utf8(env, argv[1], (utf8_t*)str2, len2, NULL);
+  assert(err == 0);
+  len2 -= 1; /* Don't include NULL in length for xdiff */
   
-  err = js_get_typedarray_info(env, argv[2], NULL, &data3, &len3, NULL, NULL);
+  err = js_get_value_string_utf8(env, argv[2], NULL, 0, &len3);
   assert(err == 0);
+  len3 += 1; /* NULL */
+  str3 = malloc(len3);
+  err = js_get_value_string_utf8(env, argv[2], (utf8_t*)str3, len3, NULL);
+  assert(err == 0);
+  len3 -= 1; /* Don't include NULL in length for xdiff */
   
   // Fourth argument is options (optional)
   js_value_t *options = NULL;
@@ -727,11 +782,11 @@ bare_xdiff_merge_sync(js_env_t *env, js_callback_info_t *info) {
   
   // Set up mmfile structures for three-way merge
   mmfile_t ancestor, ours, theirs;
-  ancestor.ptr = (char *)data1;
+  ancestor.ptr = str1;
   ancestor.size = len1;
-  ours.ptr = (char *)data2;
+  ours.ptr = str2;
   ours.size = len2;
-  theirs.ptr = (char *)data3;
+  theirs.ptr = str3;
   theirs.size = len3;
   
   // Configure merge parameters
@@ -754,22 +809,20 @@ bare_xdiff_merge_sync(js_env_t *env, js_callback_info_t *info) {
     return NULL;
   }
   
-  // Create result ArrayBuffer
-  void *result_data;
-  js_value_t *result_buffer;
-  err = js_create_arraybuffer(env, result.size, &result_data, &result_buffer);
+  // Create result string
+  js_value_t *result_string;
+  err = js_create_string_utf8(env, (const utf8_t *)result.ptr, result.size, &result_string);
   if (err != 0) {
     if (result.ptr) xdl_free(result.ptr);
-    js_throw_error(env, NULL, "Failed to create result buffer");
+    js_throw_error(env, NULL, "Failed to create result string");
     return NULL;
   }
   
-  if (result.size > 0) {
-    memcpy(result_data, result.ptr, result.size);
-  }
   if (result.ptr) xdl_free(result.ptr);
-  
-  return result_buffer;
+  free(str1);
+  free(str2);
+  free(str3);
+  return result_string;
 }
 
 
