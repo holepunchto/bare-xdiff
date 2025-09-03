@@ -16,7 +16,8 @@
   "addon": true,
   "scripts": {
     "build": "bare-make generate && bare-make build && bare-make install",
-    "test": "bare test.js"
+    "test": "bare test.js",
+    "bench": "bare bench.js"
   },
   "repository": {
     "type": "git",
@@ -31,6 +32,13 @@
   "devDependencies": {
     "brittle": "^3.4.0",
     "cmake-bare": "^1.1.2",
-    "cmake-fetch": "^1.1.1"
+    "cmake-fetch": "^1.1.1",
+    "bare-process": "^2.0.0"
+  },
+  "imports": {
+    "process": {
+      "bare": "bare-process",
+      "default": "process"
+    }
   }
 }
