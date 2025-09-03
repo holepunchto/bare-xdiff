@@ -8,6 +8,25 @@
 // Include xdiff headers
 #include "xdiff.h"
 
+// XDL merge constants (in case not defined in header)
+#ifndef XDL_MERGE_MINIMAL
+#define XDL_MERGE_MINIMAL 0
+#define XDL_MERGE_EAGER 1
+#define XDL_MERGE_ZEALOUS 2
+#define XDL_MERGE_ZEALOUS_ALNUM 3
+#endif
+
+#ifndef XDL_MERGE_FAVOR_OURS
+#define XDL_MERGE_FAVOR_OURS 1
+#define XDL_MERGE_FAVOR_THEIRS 2
+#define XDL_MERGE_FAVOR_UNION 3
+#endif
+
+#ifndef XDL_MERGE_DIFF3
+#define XDL_MERGE_DIFF3 1
+#define XDL_MERGE_ZEALOUS_DIFF3 2
+#endif
+
 // Request structure for async operations
 typedef struct {
   uv_work_t request;
@@ -23,6 +42,13 @@ typedef struct {
   void *buf3;  // For merge operations
   long len3;
   
+  // Options
+  unsigned long diff_flags;
+  int merge_level;
+  int merge_favor;
+  int merge_style;
+  int merge_marker_size;
+  
   // Output
   char *result;
   long result_len;
@@ -37,6 +63,169 @@ typedef struct {
   long len;
   long capacity;
 } xdiff_output_t;
+
+// Parse diff options from JavaScript object
+static unsigned long parse_diff_options(js_env_t *env, js_value_t *options) {
+  unsigned long flags = 0;
+  js_value_t *prop;
+  bool value;
+  
+  // Check if options is null or undefined
+  js_value_type_t type;
+  if (js_typeof(env, options, &type) != 0 || type == js_null || type == js_undefined) {
+    return flags;
+  }
+  
+  // ignoreWhitespace
+  if (js_get_named_property(env, options, "ignoreWhitespace", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_boolean) {
+      if (js_get_value_bool(env, prop, &value) == 0 && value) {
+        flags |= XDF_IGNORE_WHITESPACE;
+      }
+    }
+  }
+  
+  // ignoreWhitespaceChange  
+  if (js_get_named_property(env, options, "ignoreWhitespaceChange", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_boolean) {
+      if (js_get_value_bool(env, prop, &value) == 0 && value) {
+        flags |= XDF_IGNORE_WHITESPACE_CHANGE;
+      }
+    }
+  }
+  
+  // ignoreWhitespaceAtEol
+  if (js_get_named_property(env, options, "ignoreWhitespaceAtEol", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_boolean) {
+      if (js_get_value_bool(env, prop, &value) == 0 && value) {
+        flags |= XDF_IGNORE_WHITESPACE_AT_EOL;
+      }
+    }
+  }
+  
+  // ignoreBlankLines
+  if (js_get_named_property(env, options, "ignoreBlankLines", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_boolean) {
+      if (js_get_value_bool(env, prop, &value) == 0 && value) {
+        flags |= XDF_IGNORE_BLANK_LINES;
+      }
+    }
+  }
+  
+  // algorithm
+  if (js_get_named_property(env, options, "algorithm", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
+      size_t length;
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
+        char *algorithm = malloc(length + 1);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)algorithm, length + 1, NULL) == 0) {
+          if (strcmp(algorithm, "patience") == 0) {
+            flags |= XDF_PATIENCE_DIFF;
+          } else if (strcmp(algorithm, "histogram") == 0) {
+            flags |= XDF_HISTOGRAM_DIFF;
+          }
+        }
+        free(algorithm);
+      }
+    }
+  }
+  
+  return flags;
+}
+
+// Parse merge options from JavaScript object
+static void parse_merge_options(js_env_t *env, js_value_t *options, int *level, int *favor, int *style, int *marker_size) {
+  js_value_t *prop;
+  
+  // Set defaults
+  *level = XDL_MERGE_MINIMAL;
+  *favor = 0;
+  *style = 0;
+  *marker_size = 7;
+  
+  // Check if options is null or undefined
+  js_value_type_t type;
+  if (js_typeof(env, options, &type) != 0 || type == js_null || type == js_undefined) {
+    return;
+  }
+  
+  // level
+  if (js_get_named_property(env, options, "level", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
+      size_t length;
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
+        char *level_str = malloc(length + 1);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)level_str, length + 1, NULL) == 0) {
+          if (strcmp(level_str, "eager") == 0) {
+            *level = XDL_MERGE_EAGER;
+          } else if (strcmp(level_str, "zealous") == 0) {
+            *level = XDL_MERGE_ZEALOUS;
+          } else if (strcmp(level_str, "zealous_alnum") == 0) {
+            *level = XDL_MERGE_ZEALOUS_ALNUM;
+          }
+        }
+        free(level_str);
+      }
+    }
+  }
+  
+  // favor
+  if (js_get_named_property(env, options, "favor", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
+      size_t length;
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
+        char *favor_str = malloc(length + 1);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)favor_str, length + 1, NULL) == 0) {
+          if (strcmp(favor_str, "ours") == 0) {
+            *favor = XDL_MERGE_FAVOR_OURS;
+          } else if (strcmp(favor_str, "theirs") == 0) {
+            *favor = XDL_MERGE_FAVOR_THEIRS;
+          } else if (strcmp(favor_str, "union") == 0) {
+            *favor = XDL_MERGE_FAVOR_UNION;
+          }
+        }
+        free(favor_str);
+      }
+    }
+  }
+  
+  // style
+  if (js_get_named_property(env, options, "style", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_string) {
+      size_t length;
+      if (js_get_value_string_utf8(env, prop, NULL, 0, &length) == 0 && length > 0) {
+        char *style_str = malloc(length + 1);
+        if (js_get_value_string_utf8(env, prop, (utf8_t*)style_str, length + 1, NULL) == 0) {
+          if (strcmp(style_str, "diff3") == 0) {
+            *style = XDL_MERGE_DIFF3;
+          } else if (strcmp(style_str, "zealous_diff3") == 0) {
+            *style = XDL_MERGE_ZEALOUS_DIFF3;
+          }
+        }
+        free(style_str);
+      }
+    }
+  }
+  
+  // markerSize
+  if (js_get_named_property(env, options, "markerSize", &prop) == 0) {
+    js_value_type_t prop_type;
+    if (js_typeof(env, prop, &prop_type) == 0 && prop_type == js_number) {
+      int32_t size;
+      if (js_get_value_int32(env, prop, &size) == 0 && size > 0) {
+        *marker_size = size;
+      }
+    }
+  }
+}
 
 // Callback for xdiff diff output
 static int xdiff_out_line(void *priv, mmbuffer_t *mb, int nbuf) {
@@ -80,6 +269,7 @@ static void bare_xdiff_diff_work(uv_work_t *req) {
   // Configure xdiff parameters
   xpparam_t xpp;
   memset(&xpp, 0, sizeof(xpp));
+  xpp.flags = request->diff_flags;
   
   xdemitconf_t xecfg;
   memset(&xecfg, 0, sizeof(xecfg));
@@ -131,10 +321,10 @@ static void bare_xdiff_merge_work(uv_work_t *req) {
   // Configure merge parameters
   xmparam_t xmp;
   memset(&xmp, 0, sizeof(xmp));
-  xmp.marker_size = DEFAULT_CONFLICT_MARKER_SIZE;
-  xmp.level = XDL_MERGE_MINIMAL;
-  xmp.favor = 0;
-  xmp.style = 0;
+  xmp.marker_size = request->merge_marker_size;
+  xmp.level = request->merge_level;
+  xmp.favor = request->merge_favor;
+  xmp.style = request->merge_style;
   
   // Output buffer
   mmbuffer_t result;
@@ -159,37 +349,10 @@ static void bare_xdiff_merge_work(uv_work_t *req) {
   }
 }
 
-// Work function for patch operation (simplified - xdiff doesn't have direct patch support)
+// Patch functionality is not supported by xdiff - stub implementation
 static void bare_xdiff_patch_work(uv_work_t *req) {
   bare_xdiff_request_t *request = (bare_xdiff_request_t *)req->data;
-  
-  // For now, implement a basic patch operation
-  // In a real implementation, you'd parse the unified diff format
-  // and apply the changes. For this demo, we'll just return the original
-  // if the patch is empty, or simulate patch application.
-  
-  if (request->len2 == 0) {
-    // Empty patch - return original
-    request->result = xdl_malloc(request->len1);
-    if (request->result) {
-      memcpy(request->result, request->buf1, request->len1);
-      request->result_len = request->len1;
-      request->error_code = 0;
-    } else {
-      request->error_code = -1;
-    }
-  } else {
-    // For demo purposes, just return original
-    // A real implementation would parse and apply the patch
-    request->result = xdl_malloc(request->len1);
-    if (request->result) {
-      memcpy(request->result, request->buf1, request->len1);
-      request->result_len = request->len1;
-      request->error_code = 0;
-    } else {
-      request->error_code = -1;
-    }
-  }
+  request->error_code = -1; // Not implemented
 }
 
 // After work callback for all operations
@@ -264,8 +427,8 @@ static void bare_xdiff_after(uv_work_t *req, int status) {
 static js_value_t *
 bare_xdiff_diff(js_env_t *env, js_callback_info_t *info) {
   int err;
-  size_t argc = 3;
-  js_value_t *argv[3];
+  size_t argc = 4;
+  js_value_t *argv[4];
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
   
@@ -279,12 +442,31 @@ bare_xdiff_diff(js_env_t *env, js_callback_info_t *info) {
   err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
   assert(err == 0);
   
-  // Third argument is callback
-  js_value_t *callback = argv[2];
+  // Handle optional arguments: diff(a, b, callback) or diff(a, b, options, callback)
+  js_value_t *options = NULL;
+  js_value_t *callback;
+  
+  if (argc == 3) {
+    // diff(a, b, callback)
+    callback = argv[2];
+  } else if (argc == 4) {
+    // diff(a, b, options, callback)
+    options = argv[2];
+    callback = argv[3];
+  } else {
+    return NULL;
+  }
   
   // Create request
   bare_xdiff_request_t *request = calloc(1, sizeof(bare_xdiff_request_t));
   request->env = env;
+  
+  // Parse options (if provided)
+  if (options) {
+    request->diff_flags = parse_diff_options(env, options);
+  } else {
+    request->diff_flags = 0;
+  }
   
   // Copy input data
   request->buf1 = xdl_malloc(len1);
@@ -321,95 +503,58 @@ bare_xdiff_diff(js_env_t *env, js_callback_info_t *info) {
   return NULL;
 }
 
-// JavaScript function: patch
-static js_value_t *
-bare_xdiff_patch(js_env_t *env, js_callback_info_t *info) {
-  int err;
-  size_t argc = 3;
-  js_value_t *argv[3];
-  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
-  assert(err == 0);
-  
-  // Get arraybuffer info for both inputs
-  void *data1, *data2;
-  size_t len1, len2;
-  
-  err = js_get_arraybuffer_info(env, argv[0], &data1, &len1);
-  assert(err == 0);
-  
-  err = js_get_arraybuffer_info(env, argv[1], &data2, &len2);
-  assert(err == 0);
-  
-  // Third argument is callback
-  js_value_t *callback = argv[2];
-  
-  // Create request
-  bare_xdiff_request_t *request = calloc(1, sizeof(bare_xdiff_request_t));
-  request->env = env;
-  
-  // Copy input data
-  request->buf1 = xdl_malloc(len1);
-  request->len1 = len1;
-  memcpy(request->buf1, data1, len1);
-  
-  request->buf2 = xdl_malloc(len2);
-  request->len2 = len2;
-  memcpy(request->buf2, data2, len2);
-  
-  // Store callback reference
-  err = js_create_reference(env, callback, 1, &request->callback);
-  assert(err == 0);
-  
-  // Get context
-  js_value_t *ctx;
-  err = js_get_callback_info(env, info, NULL, NULL, &ctx, NULL);
-  assert(err == 0);
-  
-  err = js_create_reference(env, ctx, 1, &request->ctx);
-  assert(err == 0);
-  
-  // Start teardown tracking
-  err = js_add_deferred_teardown_callback(env, NULL, NULL, &request->teardown);
-  assert(err == 0);
-  
-  // Queue work
-  request->request.data = request;
-  uv_loop_t *loop;
-  err = js_get_env_loop(env, &loop);
-  assert(err == 0);
-  uv_queue_work(loop, &request->request, bare_xdiff_patch_work, bare_xdiff_after);
-  
-  return NULL;
-}
 
 // JavaScript function: merge
 static js_value_t *
 bare_xdiff_merge(js_env_t *env, js_callback_info_t *info) {
   int err;
-  size_t argc = 4;
-  js_value_t *argv[4];
+  size_t argc = 5;
+  js_value_t *argv[5];
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
   
-  // Get arraybuffer info for all three inputs
+  // Get typedarray info for all three inputs
   void *data1, *data2, *data3;
   size_t len1, len2, len3;
   
-  err = js_get_arraybuffer_info(env, argv[0], &data1, &len1);
+  err = js_get_typedarray_info(env, argv[0], NULL, &data1, &len1, NULL, NULL);
   assert(err == 0);
   
-  err = js_get_arraybuffer_info(env, argv[1], &data2, &len2);
+  err = js_get_typedarray_info(env, argv[1], NULL, &data2, &len2, NULL, NULL);
   assert(err == 0);
   
-  err = js_get_arraybuffer_info(env, argv[2], &data3, &len3);
+  err = js_get_typedarray_info(env, argv[2], NULL, &data3, &len3, NULL, NULL);
   assert(err == 0);
   
-  // Fourth argument is callback
-  js_value_t *callback = argv[3];
+  // Handle optional arguments: merge(o, a, b, callback) or merge(o, a, b, options, callback)
+  js_value_t *options = NULL;
+  js_value_t *callback;
+  
+  if (argc == 4) {
+    // merge(o, a, b, callback)
+    callback = argv[3];
+  } else if (argc == 5) {
+    // merge(o, a, b, options, callback)
+    options = argv[3];
+    callback = argv[4];
+  } else {
+    // Invalid number of arguments
+    return NULL;
+  }
   
   // Create request
   bare_xdiff_request_t *request = calloc(1, sizeof(bare_xdiff_request_t));
   request->env = env;
+  
+  // Parse merge options (if provided)
+  if (options) {
+    parse_merge_options(env, options, &request->merge_level, &request->merge_favor, &request->merge_style, &request->merge_marker_size);
+  } else {
+    request->merge_level = XDL_MERGE_MINIMAL;
+    request->merge_favor = 0;
+    request->merge_style = 0;
+    request->merge_marker_size = 7;
+  }
   
   // Copy input data
   request->buf1 = xdl_malloc(len1);
@@ -450,65 +595,6 @@ bare_xdiff_merge(js_env_t *env, js_callback_info_t *info) {
   return NULL;
 }
 
-// Simple test work function
-static void bare_xdiff_test_work(uv_work_t *req) {
-  bare_xdiff_request_t *request = (bare_xdiff_request_t *)req->data;
-  
-  // Just create a simple test result
-  const char *test_output = "test result";
-  size_t output_len = strlen(test_output);
-  
-  request->result = xdl_malloc(output_len);
-  if (request->result) {
-    memcpy(request->result, test_output, output_len);
-    request->result_len = output_len;
-    request->error_code = 0;
-  } else {
-    request->error_code = -1;
-  }
-}
-
-// JavaScript test function
-static js_value_t *
-bare_xdiff_test(js_env_t *env, js_callback_info_t *info) {
-  int err;
-  size_t argc = 1;
-  js_value_t *argv[1];
-  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
-  assert(err == 0);
-  
-  // Only argument is callback
-  js_value_t *callback = argv[0];
-  
-  // Create request
-  bare_xdiff_request_t *request = calloc(1, sizeof(bare_xdiff_request_t));
-  request->env = env;
-  
-  // Store callback reference
-  err = js_create_reference(env, callback, 1, &request->callback);
-  assert(err == 0);
-  
-  // Get context
-  js_value_t *ctx;
-  err = js_get_callback_info(env, info, NULL, NULL, &ctx, NULL);
-  assert(err == 0);
-  
-  err = js_create_reference(env, ctx, 1, &request->ctx);
-  assert(err == 0);
-  
-  // Start teardown tracking
-  err = js_add_deferred_teardown_callback(env, NULL, NULL, &request->teardown);
-  assert(err == 0);
-  
-  // Queue work
-  request->request.data = request;
-  uv_loop_t *loop;
-  err = js_get_env_loop(env, &loop);
-  assert(err == 0);
-  uv_queue_work(loop, &request->request, bare_xdiff_test_work, bare_xdiff_after);
-  
-  return NULL;
-}
 
 // Module initialization
 static js_value_t *
@@ -522,25 +608,12 @@ init(js_env_t *env, js_value_t *exports) {
   err = js_set_named_property(env, exports, "diff", diff_fn);
   assert(err == 0);
   
-  // Export patch function
-  js_value_t *patch_fn;
-  err = js_create_function(env, "patch", -1, bare_xdiff_patch, NULL, &patch_fn);
-  assert(err == 0);
-  err = js_set_named_property(env, exports, "patch", patch_fn);
-  assert(err == 0);
   
   // Export merge function
   js_value_t *merge_fn;
   err = js_create_function(env, "merge", -1, bare_xdiff_merge, NULL, &merge_fn);
   assert(err == 0);
   err = js_set_named_property(env, exports, "merge", merge_fn);
-  assert(err == 0);
-  
-  // Export test function
-  js_value_t *test_fn;
-  err = js_create_function(env, "test", -1, bare_xdiff_test, NULL, &test_fn);
-  assert(err == 0);
-  err = js_set_named_property(env, exports, "test", test_fn);
   assert(err == 0);
   
   return exports;

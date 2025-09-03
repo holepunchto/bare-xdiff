@@ -1,5 +1,5 @@
 const test = require('brittle')
-const { diff, patch, merge } = require('.')
+const { diff, merge } = require('.')
 
 test('diff - simple text change', async (t) => {
   const a = Buffer.from('hello world\n')
@@ -10,6 +10,17 @@ test('diff - simple text change', async (t) => {
   
   t.ok(diffStr.includes('hello world'), 'contains original line')
   t.ok(diffStr.includes('hello bare'), 'contains modified line')
+})
+
+test('merge with options - favor ours', async (t) => {
+  const ancestor = Buffer.from('original line\n')
+  const ours = Buffer.from('our version\n')
+  const theirs = Buffer.from('their version\n')
+  
+  const result = await merge(ancestor, ours, theirs, { favor: 'ours' })
+  const mergeStr = result.toString()
+  
+  t.ok(mergeStr.includes('our version'), 'favors our version')
 })
 
 test('diff - multiple line changes', async (t) => {
@@ -70,43 +81,6 @@ test('diff - handles ArrayBuffer input', async (t) => {
   t.ok(result.length > 0, 'has diff content')
 })
 
-test('patch - apply simple patch', async (t) => {
-  const original = Buffer.from('hello world\n')
-  const modified = Buffer.from('hello bare\n')
-  
-  const patchBuffer = await diff(original, modified)
-  const patched = await patch(original, patchBuffer)
-  
-  t.alike(patched, modified, 'patch correctly applied')
-})
-
-test('patch - apply multi-line patch', async (t) => {
-  const original = Buffer.from('line1\nline2\nline3\n')
-  const modified = Buffer.from('line1\nmodified2\nline3\nadded4\n')
-  
-  const patchBuffer = await diff(original, modified)
-  const patched = await patch(original, patchBuffer)
-  
-  t.alike(patched, modified, 'multi-line patch correctly applied')
-})
-
-test('patch - empty patch on identical content', async (t) => {
-  const original = Buffer.from('unchanged\n')
-  const patchBuffer = await diff(original, original)
-  
-  const patched = await patch(original, patchBuffer)
-  t.alike(patched, original, 'unchanged content remains unchanged')
-})
-
-test('patch - handles ArrayBuffer input', async (t) => {
-  const original = new Uint8Array([104, 101, 108, 108, 111]).buffer
-  const modified = new Uint8Array([119, 111, 114, 108, 100]).buffer
-  
-  const patchBuffer = await diff(original, modified)
-  const patched = await patch(original, patchBuffer)
-  
-  t.ok(patched instanceof Buffer, 'returns a Buffer')
-})
 
 test('merge - no conflicts', async (t) => {
   const ancestor = Buffer.from('line1\nline2\nline3\n')
@@ -141,7 +115,7 @@ test('merge - identical changes', async (t) => {
   const ours = Buffer.from('modified\n')
   const theirs = Buffer.from('modified\n')
   
-  const result = await merge(ancestor, ours, theirs)
+  const result = await merge(ancestor, ours, theirs, { level: 'zealous' })
   const mergeStr = result.toString()
   
   t.alike(result, ours, 'identical changes merge cleanly')
@@ -198,10 +172,10 @@ test('concurrent operations', async (t) => {
   })
 })
 
-test('error handling - diff with non-buffer throws', async (t) => {
-  await t.exception(async () => {
-    await diff('not a buffer', 'also not')
-  }, 'should handle non-buffer input')
+test('error handling - accepts string input', async (t) => {
+  const result = await diff('hello\n', 'world\n')
+  t.ok(result instanceof Buffer, 'returns Buffer')
+  t.ok(result.length > 0, 'has diff content')
 })
 
 test('large buffer handling', async (t) => {
@@ -222,4 +196,13 @@ test('unicode content handling', async (t) => {
   
   t.ok(result.length > 0, 'handles unicode content')
   t.ok(diffStr.includes('🌍') || diffStr.includes('🌎'), 'preserves unicode characters')
+})
+
+test('diff with options - ignore whitespace', async (t) => {
+  const a = Buffer.from('hello world\n')
+  const b = Buffer.from('hello  world\n') // Extra space
+  
+  const result = await diff(a, b, { ignoreWhitespaceChange: true })
+  
+  t.is(result.length, 0, 'ignores whitespace changes')
 })

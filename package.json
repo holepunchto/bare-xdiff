@@ -15,8 +15,8 @@
   ],
   "addon": true,
   "scripts": {
-    "build": "bare-make build && bare-make install",
-    "test": "npm run build && bare test.js"
+    "build": "bare-make generate && bare-make build && bare-make install",
+    "test": "bare test.js"
   },
   "repository": {
     "type": "git",
