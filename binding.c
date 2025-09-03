@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <bare.h>
 #include <js.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
@@ -43,16 +44,16 @@ typedef struct {
   long len3;
   
   // Options
-  unsigned long diff_flags;
-  int merge_level;
-  int merge_favor;
-  int merge_style;
-  int merge_marker_size;
+  uint32_t diff_flags;
+  int32_t merge_level;
+  int32_t merge_favor;
+  int32_t merge_style;
+  int32_t merge_marker_size;
   
   // Output
   char *result;
   long result_len;
-  int error_code;
+  int32_t error_code;
   
   js_deferred_teardown_t *teardown;
 } bare_xdiff_request_t;
@@ -60,13 +61,13 @@ typedef struct {
 // Output buffer for capturing xdiff output
 typedef struct {
   char *data;
-  long len;
-  long capacity;
-} xdiff_output_t;
+  size_t len;
+  size_t capacity;
+} bare_xdiff_output_t;
 
 // Parse diff options from JavaScript object
-static unsigned long parse_diff_options(js_env_t *env, js_value_t *options) {
-  unsigned long flags = 0;
+static uint32_t parse_diff_options(js_env_t *env, js_value_t *options) {
+  uint32_t flags = 0;
   js_value_t *prop;
   bool value;
   
@@ -140,7 +141,7 @@ static unsigned long parse_diff_options(js_env_t *env, js_value_t *options) {
 }
 
 // Parse merge options from JavaScript object
-static void parse_merge_options(js_env_t *env, js_value_t *options, int *level, int *favor, int *style, int *marker_size) {
+static void parse_merge_options(js_env_t *env, js_value_t *options, int32_t *level, int32_t *favor, int32_t *style, int32_t *marker_size) {
   js_value_t *prop;
   
   // Set defaults
@@ -233,14 +234,14 @@ static void parse_merge_options(js_env_t *env, js_value_t *options, int *level, 
 
 // Callback for xdiff diff output
 static int xdiff_out_line(void *priv, mmbuffer_t *mb, int nbuf) {
-  xdiff_output_t *output = (xdiff_output_t *)priv;
+  bare_xdiff_output_t *output = (bare_xdiff_output_t *)priv;
   
   for (int i = 0; i < nbuf; i++) {
-    long new_len = output->len + mb[i].size;
+    size_t new_len = output->len + mb[i].size;
     
     // Grow buffer if needed
     if (new_len > output->capacity) {
-      long new_capacity = output->capacity * 2;
+      size_t new_capacity = output->capacity * 2;
       if (new_capacity < new_len) {
         new_capacity = new_len + 1024;
       }
@@ -280,7 +281,7 @@ static void bare_xdiff_diff_work(uv_work_t *req) {
   xecfg.ctxlen = 3; // Context lines for unified diff
   
   // Set up output handler
-  xdiff_output_t output;
+  bare_xdiff_output_t output;
   memset(&output, 0, sizeof(output));
   output.data = xdl_malloc(1024);
   output.capacity = 1024;
@@ -686,7 +687,7 @@ bare_xdiff_diff_sync(js_env_t *env, js_callback_info_t *info) {
   xecfg.ctxlen = 3; // Context lines for unified diff
   
   // Set up output handler
-  xdiff_output_t output;
+  bare_xdiff_output_t output;
   memset(&output, 0, sizeof(output));
   output.data = xdl_malloc(1024);
   output.capacity = 1024;
