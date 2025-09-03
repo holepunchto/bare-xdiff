@@ -1,0 +1,36 @@
+{
+  "name": "bare-xdiff",
+  "version": "1.0.0",
+  "description": "libxdiff bindings for Bare",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "binding.c",
+    "binding.js",
+    "CMakeLists.txt"
+  ],
+  "addon": true,
+  "scripts": {
+    "build": "bare-make build && bare-make install",
+    "test": "npm run build && bare test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/holepunchto/bare-xdiff.git"
+  },
+  "author": "Holepunch",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/holepunchto/bare-xdiff/issues"
+  },
+  "homepage": "https://github.com/holepunchto/bare-xdiff#readme",
+  "devDependencies": {
+    "brittle": "^3.4.0",
+    "cmake-bare": "^1.1.2",
+    "cmake-fetch": "^1.1.1"
+  }
+}
