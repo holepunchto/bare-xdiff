@@ -16,13 +16,14 @@ function generateRandomData(sizeInBytes) {
     patternBuffer.copy(fullBuffer, i * patternBuffer.length)
   }
   
-  // Trim to exact size and return as string
-  return fullBuffer.subarray(0, sizeInBytes).toString()
+  // Trim to exact size and return as buffer
+  return fullBuffer.subarray(0, sizeInBytes)
 }
 
 // Generate modified version of data (change ~10% of lines)
 function generateModifiedData(original) {
-  const lines = original.split('\n')
+  const originalStr = b4a.toString(original)
+  const lines = originalStr.split('\n')
   const modifiedLines = lines.map((line, index) => {
     // Modify approximately every 10th line
     if (index % 10 === 0 && line.length > 0) {
@@ -30,7 +31,7 @@ function generateModifiedData(original) {
     }
     return line
   })
-  return modifiedLines.join('\n')
+  return b4a.from(modifiedLines.join('\n'))
 }
 
 // Benchmark configuration
@@ -126,7 +127,8 @@ async function benchmarkMerge(name, size, iterations = 5) {
   // Generate test data for three-way merge
   const ancestor = generateRandomData(size)
   const ours = generateModifiedData(ancestor)
-  const theirs = generateModifiedData(ancestor) + '_theirs'
+  const theirsStr = b4a.toString(generateModifiedData(ancestor)) + '_theirs'
+  const theirs = b4a.from(theirsStr)
   
   console.log(`Data size: ${(size / 1024).toFixed(1)}KB`)
   console.log(`Running ${iterations} iterations...`)
@@ -151,7 +153,7 @@ async function benchmarkMerge(name, size, iterations = 5) {
     asyncTimes.push(avgTimePerOperation)
   }
   
-  console.log(`Merge output size: ${(asyncResults[0].length / 1024).toFixed(1)}KB`)
+  console.log(`Merge output size: ${(asyncResults[0].output.length / 1024).toFixed(1)}KB`)
   
   // Benchmark sync merge
   const syncTimes = []
@@ -205,8 +207,8 @@ async function benchmarkAlgorithms(name, size) {
     modifiedLines.splice(25, 0, ...block1)
   }
   
-  const textA = originalLines.join('\n')
-  const textB = modifiedLines.join('\n')
+  const textA = b4a.from(originalLines.join('\n'))
+  const textB = b4a.from(modifiedLines.join('\n'))
   
   console.log(`Data size: ${(size / 1024).toFixed(1)}KB`)
   
@@ -276,7 +278,7 @@ async function benchmarkMemoryUsage() {
       const afterMerge = top().memory()
       const mergeMemory = afterMerge.rss - beforeMerge.rss
       
-      console.log(`  Merge operation: +${(mergeMemory / 1024 / 1024).toFixed(1)}MB, output: ${(mergeResult.length / 1024 / 1024).toFixed(1)}MB`)
+      console.log(`  Merge operation: +${(mergeMemory / 1024 / 1024).toFixed(1)}MB, output: ${(mergeResult.output.length / 1024 / 1024).toFixed(1)}MB`)
       
       // Peak memory usage
       const peak = top().memory()
@@ -291,7 +293,7 @@ async function benchmarkMemoryUsage() {
         mergeMemory: Math.max(0, mergeMemory) / 1024 / 1024,
         peakMemory: Math.max(0, peakMemory) / 1024 / 1024,
         diffOutputSize: diffResult.length / 1024 / 1024,
-        mergeOutputSize: mergeResult.length / 1024 / 1024
+        mergeOutputSize: mergeResult.output.length / 1024 / 1024
       })
       
       // Cleanup

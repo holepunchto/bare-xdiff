@@ -10,27 +10,28 @@ npm install bare-xdiff
 
 ```js
 const { diff, merge, diffSync, mergeSync } = require('bare-xdiff')
+const b4a = require('b4a')
 
 // Async API
-const patch = await diff(originalText, modifiedText)
-const merged = await merge(ancestorText, oursText, theirsText)
+const patch = await diff(originalBuffer, modifiedBuffer)
+const result = await merge(ancestorBuffer, oursBuffer, theirsBuffer)
 
 // Sync API  
-const patch = diffSync(originalText, modifiedText)
-const merged = mergeSync(ancestorText, oursText, theirsText)
+const patch = diffSync(originalBuffer, modifiedBuffer)
+const result = mergeSync(ancestorBuffer, oursBuffer, theirsBuffer)
 ```
 
 ## API
 
 ### `diff(a, b[, options])`
 
-Generates a unified diff patch from two text inputs.
+Generates a unified diff patch from two buffer inputs.
 
-- `a` - Original text (String)
-- `b` - Modified text (String)
+- `a` - Original data (Uint8Array)
+- `b` - Modified data (Uint8Array)
 - `options` - Optional diff options
 
-Returns a `Promise<String>` containing the diff patch.
+Returns a `Promise<Uint8Array>` containing the diff patch.
 
 #### Options
 
@@ -42,14 +43,14 @@ Returns a `Promise<String>` containing the diff patch.
 
 ### `merge(ancestor, ours, theirs[, options])`
 
-Performs a three-way merge of text.
+Performs a three-way merge of buffers.
 
-- `ancestor` - Original/ancestor text (String)
-- `ours` - Our changes text (String)
-- `theirs` - Their changes text (String)
+- `ancestor` - Original/ancestor data (Uint8Array)
+- `ours` - Our changes data (Uint8Array)
+- `theirs` - Their changes data (Uint8Array)
 - `options` - Optional merge options
 
-Returns a `Promise<String>` containing the merged result.
+Returns a `Promise<{conflict: boolean, output: Uint8Array}>` containing conflict status and merged data.
 
 #### Options
 
@@ -60,11 +61,11 @@ Returns a `Promise<String>` containing the merged result.
 
 ### `diffSync(a, b[, options])`
 
-Synchronous version of `diff()`. Returns a `String` directly.
+Synchronous version of `diff()`. Returns a `Uint8Array` directly.
 
 ### `mergeSync(ancestor, ours, theirs[, options])`
 
-Synchronous version of `merge()`. Returns a `String` directly.
+Synchronous version of `merge()`. Returns a `{conflict: boolean, output: Uint8Array}` directly.
 
 ## Examples
 
@@ -72,12 +73,13 @@ Synchronous version of `merge()`. Returns a `String` directly.
 
 ```js
 const { diff } = require('bare-xdiff')
+const b4a = require('b4a')
 
-const a = 'hello world\n'
-const b = 'hello bare\n'
+const a = b4a.from('hello world\n')
+const b = b4a.from('hello bare\n')
 
 const patch = await diff(a, b)
-console.log(patch)
+console.log(b4a.toString(patch))
 // Output:
 // @@ -1 +1 @@
 // -hello world
@@ -88,9 +90,10 @@ console.log(patch)
 
 ```js
 const { diff } = require('bare-xdiff')
+const b4a = require('b4a')
 
-const a = 'hello world\n'
-const b = 'hello  world\n' // extra space
+const a = b4a.from('hello world\n')
+const b = b4a.from('hello  world\n') // extra space
 
 const patch = await diff(a, b, { ignoreWhitespaceChange: true })
 console.log(patch.length) // 0 - no differences found
@@ -100,9 +103,10 @@ console.log(patch.length) // 0 - no differences found
 
 ```js
 const { diff } = require('bare-xdiff')
+const b4a = require('b4a')
 
-const a = 'line1\nline2\nline3\n'
-const b = 'line1\nmodified\nline3\n'
+const a = b4a.from('line1\nline2\nline3\n')
+const b = b4a.from('line1\nmodified\nline3\n')
 
 const minimal = await diff(a, b, { algorithm: 'minimal' })
 const patience = await diff(a, b, { algorithm: 'patience' }) 
@@ -113,13 +117,15 @@ const histogram = await diff(a, b, { algorithm: 'histogram' })
 
 ```js
 const { merge } = require('bare-xdiff')
+const b4a = require('b4a')
 
-const ancestor = 'original\nline\n'
-const ours = 'our\nline\n'
-const theirs = 'original\ntheir line\n'
+const ancestor = b4a.from('original\nline\n')
+const ours = b4a.from('our\nline\n')
+const theirs = b4a.from('original\ntheir line\n')
 
 const result = await merge(ancestor, ours, theirs)
-console.log(result)
+console.log(b4a.toString(result.output))
+console.log('Conflict detected:', result.conflict)
 // Output includes merged content or conflict markers
 ```
 
@@ -127,22 +133,27 @@ console.log(result)
 
 ```js
 const { merge } = require('bare-xdiff')
+const b4a = require('b4a')
 
 // Always favor our changes in conflicts
 const result = await merge(ancestor, ours, theirs, { favor: 'ours' })
+console.log('Conflict detected:', result.conflict)
 
 // Use diff3 style conflict markers
 const result = await merge(ancestor, ours, theirs, { style: 'diff3' })
+console.log('Conflict detected:', result.conflict)
 ```
 
 ### Synchronous Operations
 
 ```js
 const { diffSync, mergeSync } = require('bare-xdiff')
+const b4a = require('b4a')
 
 // Blocking operations - no async/await needed
-const patch = diffSync(textA, textB)
-const merged = mergeSync(ancestor, ours, theirs)
+const patch = diffSync(bufferA, bufferB)
+const result = mergeSync(ancestor, ours, theirs)
+console.log('Conflict detected:', result.conflict)
 ```
 
 ## Performance
