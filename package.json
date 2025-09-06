@@ -30,13 +30,15 @@
     "url": "https://github.com/holepunchto/bare-xdiff/issues"
   },
   "homepage": "https://github.com/holepunchto/bare-xdiff#readme",
+  "dependencies": {
+    "b4a": "^1.6.7"
+  },
   "devDependencies": {
+    "bare-process": "^2.0.0",
     "brittle": "^3.4.0",
     "cmake-bare": "^1.1.2",
     "cmake-fetch": "^1.1.1",
-    "bare-process": "^2.0.0",
-    "process-top": "^1.0.0",
-    "b4a": "^1.6.4"
+    "process-top": "^1.0.0"
   },
   "imports": {
     "process": {
